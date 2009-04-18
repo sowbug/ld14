@@ -1,0 +1,6 @@
++00:54 thinking of ideas.
+  Anti-Tetris: some other entity is filling in a wall, and your job is to pick it apart.
++01:24 from irc: <sowbug> Okee, here's my idea. Turn Tetris upside-down, completed wall of blocks is moving down (advancing) at you, you form "interesting" sequences of blocks to remove from the wall the lowest blocks composing your sequences. More interesting = more points. Wall hits bottom and you meet your doom.
++02:21 started coding
++02:38 block types: I J L O S T Z (wikipedia)
++11:06 wake up, continue coding after deciding the suckiness of my idea was irrelevant
