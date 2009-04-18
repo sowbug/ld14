@@ -12,12 +12,18 @@ import time
 SCREEN_SIZE_X = 320
 SCREEN_SIZE_Y = 480
 ASSET_DIR = 'assets'
-TILE_SIZE = 16
+TILE_SIZE = 32
 CLOCK_HEIGHT = 8
 
 SHAPE_COUNT = 4
 COLOR_COUNT = 4
 TRANSPARENCY_KEY_COLOR = (255, 0, 255)
+
+RGB_TILE_COLOR = [(0xff, 0x00, 0x00),
+                  (0x00, 0xff, 0x00),
+                  (0x30, 0x30, 0xff),
+                  (0xff, 0xff, 0x00),
+                  ]
 
 SLOT_COUNT = 4
 SLOT_SIZE = 64
@@ -29,8 +35,15 @@ TILE_COLS = SCREEN_SIZE_X / TILE_SIZE
 TILE_ROWS = (SCREEN_SIZE_Y - 80) / TILE_SIZE
 DASHBOARD_START = TILE_ROWS * TILE_SIZE
 CLOCK_COLOR = (255, 128, 0)
-BACKGROUND_COLOR = (0xe0, 0xe0, 0xc0)
+BACKGROUND_COLOR = (0xff, 0xff, 0xe0)
 DASHBOARD_COLOR = (0xe0, 0xe0, 0xff)
+
+TILE_BACKGROUND_COLOR = (0xc0, 0xc0, 0xc0)
+TILE_BACKGROUND_MARGIN = 5
+SLOT_BACKGROUND_COLOR = DASHBOARD_COLOR
+SLOT_BACKGROUND_MARGIN = 16
+
+TILE_SYMBOL = ['@', '+', '^', '#']
 
 def load_image(name, colorkey=None):
   fullname = os.path.join(ASSET_DIR, name)
@@ -60,12 +73,12 @@ def load_sound(name):
   return sound
 
 class Tile(pygame.sprite.Sprite):
-  def __init__(self, shape, color, top_left):
+  def __init__(self, image, shape, color, top_left):
     pygame.sprite.Sprite.__init__(self)
     self.shape = shape
     self.color = color
-    self.image, self.rect = load_image('tile_%d.png' % self.shape, - 1)
-    self.image.set_colorkey(TRANSPARENCY_KEY_COLOR)
+    self.image = image
+    self.rect = pygame.Rect(0, 0, TILE_SIZE, TILE_SIZE)
     self.rect.topleft = top_left
     self.selected = False
 
@@ -73,11 +86,6 @@ class Tile(pygame.sprite.Sprite):
     pass
 
 class Game(object):
-  RGB_TILE_COLOR = [(0xff, 0x00, 0x00),
-                    (0x00, 0xff, 0x00),
-                    (0x00, 0x00, 0xff),
-                    (0xff, 0xff, 0x00),
-                    ]
   FPS = 15
 
   def __init__(self):
@@ -107,10 +115,39 @@ class Game(object):
     self.wall_clock_msec = self.wall_row_duration_msec
 
     self.tile_images = []
+    font = pygame.font.Font(None, 36)
     for shape in range(0, SHAPE_COUNT):
-        img, rect = load_image('bigtile_%d.png' % shape, - 1)
-        img.set_colorkey(TRANSPARENCY_KEY_COLOR)
-        self.tile_images.append(img)
+      image = pygame.Surface((SLOT_SIZE, SLOT_SIZE))
+      image.set_colorkey(TRANSPARENCY_KEY_COLOR)
+      image.fill(TRANSPARENCY_KEY_COLOR)
+      image.fill(SLOT_BACKGROUND_COLOR,
+                 pygame.Rect(SLOT_BACKGROUND_MARGIN,
+                             SLOT_BACKGROUND_MARGIN,
+                             SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2,
+                             SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2))
+      text = font.render(TILE_SYMBOL[shape], 1, (16, 16, 16))
+      textpos = text.get_rect(centerx=SLOT_SIZE / 2)
+      textpos.top = (SLOT_SIZE - font.get_height()) / 2
+      image.blit(text, textpos)
+      self.tile_images.append(image)
+
+    self.small_tile_images = []
+    font = pygame.font.Font(None, 20)
+    for shape in range(0, SHAPE_COUNT):
+      image = pygame.Surface((TILE_SIZE, TILE_SIZE))
+      image.set_colorkey(TRANSPARENCY_KEY_COLOR)
+      image.fill(TRANSPARENCY_KEY_COLOR)
+      image.fill(TILE_BACKGROUND_COLOR,
+                 pygame.Rect(TILE_BACKGROUND_MARGIN,
+                             TILE_BACKGROUND_MARGIN,
+                             TILE_SIZE - TILE_BACKGROUND_MARGIN * 2,
+                             TILE_SIZE - TILE_BACKGROUND_MARGIN * 2))
+      text = font.render(TILE_SYMBOL[shape], 1, (16, 16, 16))
+      textpos = text.get_rect(centerx=TILE_SIZE / 2)
+      textpos.top = (TILE_SIZE - font.get_height()) / 2
+      image.blit(text, textpos)
+      self.small_tile_images.append(image)
+    
     self.slot_image, self.slot_rect = load_image('slot.png', - 1)
     self.slot_image.set_colorkey(TRANSPARENCY_KEY_COLOR)
     self.clear_slots()
@@ -130,6 +167,13 @@ class Game(object):
     self.banner = None
     self.banner_countdown = 0
     self.banner_alpha = 0
+    
+    self.wall_advancement_sound = load_sound('wall_advancement.wav')
+    self.select_tile_sound = load_sound('select_tile.wav')
+    self.unselect_tile_sound = load_sound('unselect_tile.wav')
+    self.group_good_sound = load_sound('group_good.wav')
+    self.group_bad_sound = load_sound('group_bad.wav')
+    self.game_over_sound = load_sound('game_over.wav')
 
     self.enqueued_banner_messages = []
     self.enqueue_banner_message("Welcome to Sowbug's Ludum Dare #14 entry")
@@ -138,6 +182,8 @@ class Game(object):
     self.enqueue_banner_message("Four of one color are a group")
     self.enqueue_banner_message("So are four of one shape")
     self.enqueue_banner_message("Don't let the tiles reach the bottom!")
+
+    self.game_over = False
 
     self.screen.blit(self.background, (0, 0))
     pygame.display.flip()
@@ -197,7 +243,8 @@ class Game(object):
         color = random.randint(0, COLOR_COUNT - 1)
         self.grid_shapes[row].append(shape)
         self.grid_colors[row].append(color)
-        tile = Tile(shape, color, (col * TILE_SIZE, row * TILE_SIZE))
+        tile = Tile(self.small_tile_images[shape],
+                    shape, color, (col * TILE_SIZE, row * TILE_SIZE))
         self.tile_sprites.add(tile)
         self.grid_tiles[row].append(tile)
 
@@ -208,30 +255,36 @@ class Game(object):
         color = color_row[col]
         if color >= 0:
           if self.grid_tiles[row][col].selected:
-            rgb_color = Game.RGB_TILE_COLOR[color]
+            rgb_color = RGB_TILE_COLOR[color]
             rgb_color = (rgb_color[0] * self.pulse_color,
                          rgb_color[1] * self.pulse_color,
                          rgb_color[2] * self.pulse_color) 
           else:
-            rgb_color = Game.RGB_TILE_COLOR[color]
+            rgb_color = RGB_TILE_COLOR[color]
+          if self.game_over:
+            rgb_color = (48, 48, 48)
           self.screen.fill(rgb_color,
-                           pygame.Rect((col * TILE_SIZE, row * TILE_SIZE),
-                                       (TILE_SIZE, TILE_SIZE)))
+                           pygame.Rect((col * TILE_SIZE + 1, row * TILE_SIZE + 1),
+                                       (TILE_SIZE - 2, TILE_SIZE - 2)))
 
   def get_rowcol_from_pos(self, pos):
     return pos[1] / TILE_SIZE, pos[0] / TILE_SIZE
 
+  # return true if this adjustment caused an event to occur
   def adjust_slot_pointer(self):
     for i in range(0, SLOT_COUNT):
       if self.slot_selection[i] == (-1, - 1):
         self.current_slot = i
-        return
+        return False
     self.handle_slot_completion()
+    return True
 
   def unselect_slot(self, index):
     (row, col) = self.slot_selection[index]
+    if row >= 0:
+      self.unselect_tile_sound.play()
+      self.grid_tiles[row][col].selected = False
     self.slot_selection[index] = (-1, - 1)
-    self.grid_tiles[row][col].selected = False
     self.adjust_slot_pointer()
 
   def select_tile(self, row, col):
@@ -253,33 +306,48 @@ class Game(object):
     if selected:
       self.slot_selection[self.current_slot] = (row, col)
       self.grid_tiles[row][col].selected = True
-      self.adjust_slot_pointer()
+      if not self.adjust_slot_pointer():
+        self.select_tile_sound.play()
     self.draw_slots()
 
   def advance_wall(self):
+    self.wall_advancement_sound.play()
     # This is LD so I'm doing the dumb expensive scroll
     last_row = self.grid_shapes[TILE_ROWS - 2] # -1 x 2 because it's pre-scroll
+    last_row = self.grid_shapes[10] # REMOVE THIS
     if len(last_row) > 0:
       for col in range(0, TILE_COLS):
         if last_row[col] != - 1:
-          print 'you lose'
-          sys.exit()
+          self.enqueue_banner_message("GAME OVER")
+          self.game_over = True
+          self.game_over_sound.play()
     for row in range(TILE_ROWS - 1, 0, - 1):
       self.grid_shapes[row] = self.grid_shapes[row - 1]
       self.grid_colors[row] = self.grid_colors[row - 1]
       self.grid_tiles[row] = self.grid_tiles[row - 1]
       for tile in self.grid_tiles[row]:
         if tile:
-          tile.rect.top += TILE_SIZE 
+          tile.rect.top += TILE_SIZE
     self.create_row(0)
     for i in range(0, SLOT_COUNT):
       if self.slot_selection[i][0] >= 0:
         self.slot_selection[i] = (self.slot_selection[i][0] + 1,
                                   self.slot_selection[i][1])
 
+  def get_slot_from_pos(self, pos):
+    if pos[1] < DASHBOARD_START:
+      return -1
+    if pos[0] < SLOT_LEFT_MARGIN or pos[0] > SCREEN_SIZE_X - SLOT_LEFT_MARGIN:
+      return -1
+    return (pos[0] - SLOT_LEFT_MARGIN) / (SLOT_SIZE + SLOT_MARGIN)
+
   def handle_mouseup(self, pos):
     tile_row, tile_col = self.get_rowcol_from_pos(pos)
-    self.select_tile(tile_row, tile_col)
+    if tile_row < TILE_ROWS:
+      self.select_tile(tile_row, tile_col)
+    slot_pos = self.get_slot_from_pos(pos)
+    if slot_pos >= 0:
+      self.unselect_slot(slot_pos)
 
   def remove_tile(self, row, col):
     self.grid_shapes[row][col] = - 1
@@ -310,8 +378,11 @@ class Game(object):
       for i in range(0, SLOT_COUNT):
         row, col = self.slot_selection[i]
         self.remove_tile(row, col)
+        self.group_good_sound.play()
+    else:
+      self.group_bad_sound.play()
     self.clear_slots()
-    
+
   def clear_slots(self):
     if hasattr(self, 'slot_selection'):
       for i in range(0, SLOT_COUNT):
@@ -326,10 +397,10 @@ class Game(object):
       x = i * (SLOT_SIZE + SLOT_MARGIN) + SLOT_LEFT_MARGIN
       y = DASHBOARD_START + SLOT_MARGIN
       row, col = self.slot_selection[i]
-      if row >= 0 and col >= 0:      
+      if row >= 0 and col >= 0:
         shape = self.grid_shapes[row][col]
         color = self.grid_colors[row][col]
-        self.screen.fill(Game.RGB_TILE_COLOR[color],
+        self.screen.fill(RGB_TILE_COLOR[color],
                          pygame.Rect((x, y), (64, 64)))
         self.screen.blit(self.tile_images[shape], (x, y))
       self.screen.blit(self.slot_image, (x, y))
@@ -359,10 +430,11 @@ class Game(object):
   def run(self):
     while True:
       elapsed = self.clock.tick(Game.FPS)
-      self.wall_clock_msec -= elapsed
-      if self.wall_clock_msec <= 0:
-        self.advance_wall() 
-        self.wall_clock_msec = self.wall_row_duration_msec
+      if not self.game_over:
+        self.wall_clock_msec -= elapsed
+        if self.wall_clock_msec <= 0:
+          self.advance_wall() 
+          self.wall_clock_msec = self.wall_row_duration_msec
       self.update_pulse_color(Game.FPS)
       self.tick_banner(elapsed)
 
@@ -371,10 +443,8 @@ class Game(object):
           return
         elif event.type == KEYDOWN and event.key == K_ESCAPE:
           return
-        elif event.type == MOUSEBUTTONUP:
+        elif event.type == MOUSEBUTTONUP and not self.game_over:
           self.handle_mouseup(event.pos)
-        elif event.type == MOUSEMOTION:
-          pass
 
       self.tile_sprites.update()
     
