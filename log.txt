@@ -4,3 +4,4 @@
 +02:21 started coding
 +02:38 block types: I J L O S T Z (wikipedia)
 +11:06 wake up, continue coding after deciding the suckiness of my idea was irrelevant
++13:38 feeling OK about game logic, nearing completion of it
