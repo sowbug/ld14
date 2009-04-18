@@ -15,7 +15,9 @@ ASSET_DIR = 'assets'
 TILE_SIZE = 32
 CLOCK_HEIGHT = 8
 
-SHAPE_COUNT = 4
+TILE_SYMBOL = ['A', 'B', 'C', 'D', 'E', 'F']
+
+SHAPE_COUNT = len(TILE_SYMBOL)
 COLOR_COUNT = 4
 TRANSPARENCY_KEY_COLOR = (255, 0, 255)
 
@@ -42,8 +44,6 @@ TILE_BACKGROUND_COLOR = (0xc0, 0xc0, 0xc0)
 TILE_BACKGROUND_MARGIN = 5
 SLOT_BACKGROUND_COLOR = DASHBOARD_COLOR
 SLOT_BACKGROUND_MARGIN = 16
-
-TILE_SYMBOL = ['@', '+', '^', '#']
 
 def load_image(name, colorkey=None):
   fullname = os.path.join(ASSET_DIR, name)
@@ -79,11 +79,16 @@ class Tile(pygame.sprite.Sprite):
     self.color = color
     self.image = image
     self.rect = pygame.Rect(0, 0, TILE_SIZE, TILE_SIZE)
-    self.rect.topleft = top_left
+    self.reposition(top_left)
     self.selected = False
 
-  def update(self):
-    pass
+  def apply_vertical_offset(self, offset):
+    self.rect.top = self.original_top + offset
+
+  def reposition(self, top_left):
+    self.rect.topleft = top_left
+    self.original_top = top_left[1]
+    #self.top = self.original_top + offset
 
 class Game(object):
   FPS = 15
@@ -111,8 +116,10 @@ class Game(object):
     self.pulse_color_dx = 0
     self.pulse_color = 0.75
     
-    self.wall_row_duration_msec = 5000
+    self.wall_row_duration_msec = 10000
     self.wall_clock_msec = self.wall_row_duration_msec
+
+    self.vertical_tile_offset = 0
 
     self.tile_images = []
     font = pygame.font.Font(None, 36)
@@ -263,12 +270,15 @@ class Game(object):
             rgb_color = RGB_TILE_COLOR[color]
           if self.game_over:
             rgb_color = (48, 48, 48)
-          self.screen.fill(rgb_color,
-                           pygame.Rect((col * TILE_SIZE + 1, row * TILE_SIZE + 1),
-                                       (TILE_SIZE - 2, TILE_SIZE - 2)))
+          rect = pygame.Rect((col * TILE_SIZE + 1, row * TILE_SIZE + 1),
+                             (TILE_SIZE - 2, TILE_SIZE - 2))
+          rect.top += self.vertical_tile_offset
+          self.screen.fill(rgb_color, rect)
 
   def get_rowcol_from_pos(self, pos):
-    return pos[1] / TILE_SIZE, pos[0] / TILE_SIZE
+    x = pos[0]
+    y = pos[1] - self.vertical_tile_offset
+    return y / TILE_SIZE, x / TILE_SIZE
 
   # return true if this adjustment caused an event to occur
   def adjust_slot_pointer(self):
@@ -327,7 +337,9 @@ class Game(object):
       self.grid_tiles[row] = self.grid_tiles[row - 1]
       for tile in self.grid_tiles[row]:
         if tile:
-          tile.rect.top += TILE_SIZE
+          r = tile.rect
+          r.top = tile.original_top + TILE_SIZE
+          tile.reposition(r.topleft)
     self.create_row(0)
     for i in range(0, SLOT_COUNT):
       if self.slot_selection[i][0] >= 0:
@@ -426,7 +438,11 @@ class Game(object):
   def draw_floating_text(self):
     if self.banner:
       self.screen.blit(self.banner, (0, 300))
-      
+
+  def tick_vertical_tile_offset(self):
+    remaining = float(self.wall_clock_msec) / float(self.wall_row_duration_msec)
+    self.vertical_tile_offset = int((1.0 - remaining) * TILE_SIZE)
+
   def run(self):
     while True:
       elapsed = self.clock.tick(Game.FPS)
@@ -435,6 +451,7 @@ class Game(object):
         if self.wall_clock_msec <= 0:
           self.advance_wall() 
           self.wall_clock_msec = self.wall_row_duration_msec
+        self.tick_vertical_tile_offset()
       self.update_pulse_color(Game.FPS)
       self.tick_banner(elapsed)
 
@@ -447,7 +464,9 @@ class Game(object):
           self.handle_mouseup(event.pos)
 
       self.tile_sprites.update()
-    
+      for tile in self.tile_sprites:
+        tile.apply_vertical_offset(self.vertical_tile_offset)
+
       self.screen.blit(self.background, (0, 0))
       self.draw_colors()
       self.tile_sprites.draw(self.screen)

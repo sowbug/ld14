@@ -6,3 +6,15 @@
 +11:06 wake up, continue coding after deciding the suckiness of my idea was irrelevant
 +13:38 feeling OK about game logic, nearing completion of it
 +15:22 creating first alpha distro
++18:50 creating second alpha distro
++19:12 showed the game to Thomas (age 4). He watched me play it and then walked away, back to his blocks. :(
++19:36 wish I knew how to draw.
++19:37 Ideas for game:
+  - Make each countdown much longer (20 seconds)?
+  - More kid-friendly icons. Not letters, but candy canes, carrots, tomatoes, etc.
+  - A kind of tile that can be removed only by removing the tiles around it.
+  - Better wall-advancement transition that both shows what's happening and addresses the stray-click problem.
+  - Better animation that shows how tiles are removed.
+  - Restart game at end.
+  - Levelling up: when x% of board is gone, increase level?
+  - Score: 1 point for low tiles, more for high tiles, multiplier for 4 of both same shape/color 
