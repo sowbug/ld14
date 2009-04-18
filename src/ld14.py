@@ -12,10 +12,22 @@ import time
 SCREEN_SIZE_X = 320
 SCREEN_SIZE_Y = 480
 ASSET_DIR = 'assets'
+TILE_SIZE = 16
+CLOCK_HEIGHT = 8
 
-TILE_COLS = SCREEN_SIZE_X / 16
-TILE_ROWS = (SCREEN_SIZE_Y - 80) / 16
-DASHBOARD_START = TILE_ROWS * 16
+SHAPE_COUNT = 4
+COLOR_COUNT = 4
+TRANSPARENCY_KEY_COLOR = (255, 0, 255)
+
+SLOT_COUNT = 4
+SLOT_SIZE = 64
+SLOT_MARGIN = 4
+SLOT_LEFT_MARGIN = (SCREEN_SIZE_X - (SLOT_COUNT * SLOT_SIZE + 
+                                    (SLOT_COUNT - 1) * SLOT_MARGIN)) / 2
+
+TILE_COLS = SCREEN_SIZE_X / TILE_SIZE
+TILE_ROWS = (SCREEN_SIZE_Y - 80) / TILE_SIZE
+DASHBOARD_START = TILE_ROWS * TILE_SIZE
 CLOCK_COLOR = (255, 128, 0)
 BACKGROUND_COLOR = (0xe0, 0xe0, 0xc0)
 DASHBOARD_COLOR = (0xe0, 0xe0, 0xff)
@@ -53,7 +65,7 @@ class Tile(pygame.sprite.Sprite):
     self.shape = shape
     self.color = color
     self.image, self.rect = load_image('tile_%d.png' % self.shape, - 1)
-    self.image.set_colorkey((255, 0, 255))
+    self.image.set_colorkey(TRANSPARENCY_KEY_COLOR)
     self.rect.topleft = top_left
     self.selected = False
 
@@ -66,6 +78,7 @@ class Game(object):
                     (0x00, 0x00, 0xff),
                     (0xff, 0xff, 0x00),
                     ]
+  FPS = 15
 
   def __init__(self):
     self.clock = pygame.time.Clock()
@@ -94,12 +107,12 @@ class Game(object):
     self.wall_clock_msec = self.wall_row_duration_msec
 
     self.tile_images = []
-    for shape in range(0, 4):
+    for shape in range(0, SHAPE_COUNT):
         img, rect = load_image('bigtile_%d.png' % shape, - 1)
-        img.set_colorkey((255, 0, 255))
+        img.set_colorkey(TRANSPARENCY_KEY_COLOR)
         self.tile_images.append(img)
     self.slot_image, self.slot_rect = load_image('slot.png', - 1)
-    self.slot_image.set_colorkey((255, 0, 255))
+    self.slot_image.set_colorkey(TRANSPARENCY_KEY_COLOR)
     self.clear_slots()
 
     self.tile_sprites = pygame.sprite.Group([])
@@ -112,8 +125,56 @@ class Game(object):
       self.grid_tiles.append([])
       self.create_row(row, row < 5) # level 1, fill in just 5 rows at top
 
+    if pygame.font:
+      self.font = pygame.font.Font(None, 20)
+    self.banner = None
+    self.banner_countdown = 0
+    self.banner_alpha = 0
+
+    self.enqueued_banner_messages = []
+    self.enqueue_banner_message("Welcome to Sowbug's Ludum Dare #14 entry")
+    self.enqueue_banner_message("Click tiles to add them to the slots")
+    self.enqueue_banner_message("Remove tiles by grouping them in the slots")
+    self.enqueue_banner_message("Four of one color are a group")
+    self.enqueue_banner_message("So are four of one shape")
+    self.enqueue_banner_message("Don't let the tiles reach the bottom!")
+
     self.screen.blit(self.background, (0, 0))
     pygame.display.flip()
+
+  def generate_banner(self, text):
+    if self.font:
+      self.banner = pygame.Surface((SCREEN_SIZE_X,
+                                    self.font.get_height() + 16))
+      self.banner.fill((0, 0, 192))
+      self.banner.set_alpha(self.banner_alpha)
+      text = self.font.render(text, 1, (255, 255, 0))
+      textpos = text.get_rect(centerx=self.banner.get_width() / 2)
+      textpos.top = 8
+      self.banner.blit(text, textpos)
+
+  def enqueue_banner_message(self, text):
+    self.enqueued_banner_messages.append(text)
+
+  def tick_banner(self, msec_since_last):
+    if not self.banner:
+      try:
+        message = self.enqueued_banner_messages.pop(0)
+        if message:
+          self.generate_banner(message)
+          self.banner_countdown = 4000
+      except IndexError:
+        pass
+      return
+    self.banner_countdown -= msec_since_last
+    if self.banner_countdown <= 0:
+      self.banner = None
+    else:
+      if self.banner_countdown < 1000:
+        self.banner_alpha = int(255 * float(self.banner_countdown) / 1000.0)
+      else:
+        self.banner_alpha = 255
+      self.banner.set_alpha(self.banner_alpha)
 
   def create_row(self, row, should_fill=True):
     if len(self.grid_shapes) > row:
@@ -125,17 +186,18 @@ class Game(object):
     else:
       self.grid_colors.append([])
     if len(self.grid_tiles) > row:
-      self.grid_tiles[row] = [] # this leaks tiles but we don't currently use it
-      print 'WARNING LEAK'
+      # this could leak tiles but we don't currently use it in the way
+      # that would leak (replacing a non-scrolled row)
+      self.grid_tiles[row] = []
     else:
       self.grid_tiles.append([])
     if should_fill:
       for col in range(0, TILE_COLS):
-        shape = random.randint(0, 3)
-        color = random.randint(0, 3)
+        shape = random.randint(0, SHAPE_COUNT - 1)
+        color = random.randint(0, COLOR_COUNT - 1)
         self.grid_shapes[row].append(shape)
         self.grid_colors[row].append(color)
-        tile = Tile(shape, color, (col * 16, row * 16))
+        tile = Tile(shape, color, (col * TILE_SIZE, row * TILE_SIZE))
         self.tile_sprites.add(tile)
         self.grid_tiles[row].append(tile)
 
@@ -153,21 +215,22 @@ class Game(object):
           else:
             rgb_color = Game.RGB_TILE_COLOR[color]
           self.screen.fill(rgb_color,
-                           pygame.Rect((col * 16, row * 16), (16, 16)))
+                           pygame.Rect((col * TILE_SIZE, row * TILE_SIZE),
+                                       (TILE_SIZE, TILE_SIZE)))
 
   def get_rowcol_from_pos(self, pos):
-    return pos[1] / 16, pos[0] / 16
+    return pos[1] / TILE_SIZE, pos[0] / TILE_SIZE
 
   def adjust_slot_pointer(self):
-    for i in range(0, 4):
-      if self.slot_selection[i] == (-1, -1):
+    for i in range(0, SLOT_COUNT):
+      if self.slot_selection[i] == (-1, - 1):
         self.current_slot = i
         return
     self.handle_slot_completion()
 
   def unselect_slot(self, index):
     (row, col) = self.slot_selection[index]
-    self.slot_selection[index] = (-1, -1)
+    self.slot_selection[index] = (-1, - 1)
     self.grid_tiles[row][col].selected = False
     self.adjust_slot_pointer()
 
@@ -184,7 +247,7 @@ class Game(object):
 
     # tried to select an empty tile?
     if selected:
-      if self.grid_shapes[row][col] == -1:
+      if self.grid_shapes[row][col] == - 1:
         selected = False
 
     if selected:
@@ -198,19 +261,18 @@ class Game(object):
     last_row = self.grid_shapes[TILE_ROWS - 2] # -1 x 2 because it's pre-scroll
     if len(last_row) > 0:
       for col in range(0, TILE_COLS):
-        print col
-        if last_row[col] != -1:
+        if last_row[col] != - 1:
           print 'you lose'
           sys.exit()
-    for row in range(TILE_ROWS - 1, 0, -1):
+    for row in range(TILE_ROWS - 1, 0, - 1):
       self.grid_shapes[row] = self.grid_shapes[row - 1]
       self.grid_colors[row] = self.grid_colors[row - 1]
       self.grid_tiles[row] = self.grid_tiles[row - 1]
       for tile in self.grid_tiles[row]:
         if tile:
-          tile.rect.top += 16 
+          tile.rect.top += TILE_SIZE 
     self.create_row(0)
-    for i in range(0, 4):
+    for i in range(0, SLOT_COUNT):
       if self.slot_selection[i][0] >= 0:
         self.slot_selection[i] = (self.slot_selection[i][0] + 1,
                                   self.slot_selection[i][1])
@@ -220,8 +282,8 @@ class Game(object):
     self.select_tile(tile_row, tile_col)
 
   def remove_tile(self, row, col):
-    self.grid_shapes[row][col] = -1
-    self.grid_colors[row][col] = -1
+    self.grid_shapes[row][col] = - 1
+    self.grid_colors[row][col] = - 1
     tile = self.grid_tiles[row][col]
     self.grid_tiles[row][col] = None
     self.tile_sprites.remove(tile)
@@ -230,9 +292,9 @@ class Game(object):
   def handle_slot_completion(self):
     shapes_same = True
     colors_same = True
-    last_shape = -1
-    last_color = -1
-    for i in range(0, 4):
+    last_shape = - 1
+    last_color = - 1
+    for i in range(0, SLOT_COUNT):
       row, col = self.slot_selection[i]
       shape = self.grid_shapes[row][col]
       color = self.grid_colors[row][col]
@@ -244,33 +306,31 @@ class Game(object):
         if color != last_color:
           colors_same = False
       last_color = color
-    print 'Shapes same: %s' % shapes_same
-    print 'Colors same: %s' % colors_same
     if shapes_same or colors_same:
-      for i in range(0, 4):
+      for i in range(0, SLOT_COUNT):
         row, col = self.slot_selection[i]
         self.remove_tile(row, col)
     self.clear_slots()
     
   def clear_slots(self):
     if hasattr(self, 'slot_selection'):
-      for i in range(0, 4):
+      for i in range(0, SLOT_COUNT):
         row, col = self.slot_selection[i]
         if self.grid_tiles[row][col]:
           self.grid_tiles[row][col].selected = False
-    self.slot_selection = [(-1, -1), (-1, -1), (-1, -1), (-1, -1), ]
+    self.slot_selection = [(-1, - 1), (-1, - 1), (-1, - 1), (-1, - 1), ]
     self.adjust_slot_pointer()
 
   def draw_slots(self):
-    for i in range(0, 4):
-      x = i * (64 + 4) + 24
-      y = DASHBOARD_START
+    for i in range(0, SLOT_COUNT):
+      x = i * (SLOT_SIZE + SLOT_MARGIN) + SLOT_LEFT_MARGIN
+      y = DASHBOARD_START + SLOT_MARGIN
       row, col = self.slot_selection[i]
       if row >= 0 and col >= 0:      
         shape = self.grid_shapes[row][col]
         color = self.grid_colors[row][col]
-        print 'tile at %d %d is %d %d' % (row, col, shape, color)
-        self.screen.fill(Game.RGB_TILE_COLOR[color], pygame.Rect((x, y), (64, 64)))
+        self.screen.fill(Game.RGB_TILE_COLOR[color],
+                         pygame.Rect((x, y), (64, 64)))
         self.screen.blit(self.tile_images[shape], (x, y))
       self.screen.blit(self.slot_image, (x, y))
 
@@ -287,18 +347,24 @@ class Game(object):
 
   def draw_wall_clock(self):
     remaining = float(self.wall_clock_msec) / float(self.wall_row_duration_msec)
-    self.screen.fill(CLOCK_COLOR, pygame.Rect(0, DASHBOARD_START + 68,
-                     int(remaining * SCREEN_SIZE_X), 16))
+    self.screen.fill(CLOCK_COLOR,
+                      pygame.Rect(0,
+                                  DASHBOARD_START + SLOT_SIZE + SLOT_MARGIN * 2,
+                     int(remaining * SCREEN_SIZE_X), CLOCK_HEIGHT))
 
+  def draw_floating_text(self):
+    if self.banner:
+      self.screen.blit(self.banner, (0, 300))
+      
   def run(self):
     while True:
-      FPS = 15
-      elapsed = self.clock.tick(FPS)
+      elapsed = self.clock.tick(Game.FPS)
       self.wall_clock_msec -= elapsed
       if self.wall_clock_msec <= 0:
         self.advance_wall() 
         self.wall_clock_msec = self.wall_row_duration_msec
-      self.update_pulse_color(FPS)
+      self.update_pulse_color(Game.FPS)
+      self.tick_banner(elapsed)
 
       for event in pygame.event.get():
         if event.type == QUIT:
@@ -317,6 +383,7 @@ class Game(object):
       self.tile_sprites.draw(self.screen)
       self.draw_slots()
       self.draw_wall_clock()
+      self.draw_floating_text()
       pygame.display.flip()
 
 def main():
