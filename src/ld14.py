@@ -13,6 +13,13 @@ SCREEN_SIZE_X = 320
 SCREEN_SIZE_Y = 480
 ASSET_DIR = 'assets'
 
+TILE_COLS = SCREEN_SIZE_X / 16
+TILE_ROWS = (SCREEN_SIZE_Y - 80) / 16
+DASHBOARD_START = TILE_ROWS * 16
+CLOCK_COLOR = (255, 128, 0)
+BACKGROUND_COLOR = (0xe0, 0xe0, 0xc0)
+DASHBOARD_COLOR = (0xe0, 0xe0, 0xff)
+
 def load_image(name, colorkey=None):
   fullname = os.path.join(ASSET_DIR, name)
   try:
@@ -54,15 +61,10 @@ class Tile(pygame.sprite.Sprite):
     pass
 
 class Game(object):
-  RGB_TILE_COLOR = [(0xcc, 0x00, 0x00),
-                    (0x00, 0xcc, 0x00),
-                    (0x00, 0x00, 0xcc),
-                    (0xcc, 0xcc, 0x00),
-                    ]
-  RGB_TILE_BRIGHT_COLOR = [(0xff, 0x00, 0x00),
-                           (0x00, 0xff, 0x00),
-                           (0x00, 0x00, 0xff),
-                           (0xff, 0xff, 0x00),
+  RGB_TILE_COLOR = [(0xff, 0x00, 0x00),
+                    (0x00, 0xff, 0x00),
+                    (0x00, 0x00, 0xff),
+                    (0xff, 0xff, 0x00),
                     ]
 
   def __init__(self):
@@ -79,7 +81,17 @@ class Game(object):
     pygame.mouse.set_visible(True)
   
     self.background = pygame.Surface(self.screen.get_size()).convert()
-    self.background.fill((0xe0, 0xe0, 0xc0))
+    self.background.fill(BACKGROUND_COLOR,
+                         pygame.Rect(0, 0, SCREEN_SIZE_X, DASHBOARD_START))
+    self.background.fill(DASHBOARD_COLOR,
+                         pygame.Rect(0, DASHBOARD_START, SCREEN_SIZE_X,
+                                     SCREEN_SIZE_Y - DASHBOARD_START))
+    
+    self.pulse_color_dx = 0
+    self.pulse_color = 0.75
+    
+    self.wall_row_duration_msec = 5000
+    self.wall_clock_msec = self.wall_row_duration_msec
 
     self.tile_images = []
     for shape in range(0, 4):
@@ -90,32 +102,42 @@ class Game(object):
     self.slot_image.set_colorkey((255, 0, 255))
     self.clear_slots()
 
+    self.tile_sprites = pygame.sprite.Group([])
     self.grid_shapes = []
     self.grid_colors = []
-    for row in range(0, 30):
+    self.grid_tiles = []
+    for row in range(0, TILE_ROWS):
       self.grid_shapes.append([])
       self.grid_colors.append([])
-      if row > 10:
-        continue
-      for col in range(0, 20):
-        self.grid_shapes[row].append(random.randint(0, 3))
-        self.grid_colors[row].append(random.randint(0, 3))
-
-    self.tile_sprites = pygame.sprite.Group([])
-    self.grid_tiles = []
-    for row in range(0, len(self.grid_shapes)):
-      shape_row = self.grid_shapes[row]
-      color_row = self.grid_colors[row]
       self.grid_tiles.append([])
-      for col in range(0, len(shape_row)):
-        shape = shape_row[col]
-        color = color_row[col]
-        tile = Tile(shape, color, (col * 16, row * 16))
-        self.tile_sprites.add(tile)
-        self.grid_tiles[row].append(tile)
+      self.create_row(row, row < 5) # level 1, fill in just 5 rows at top
 
     self.screen.blit(self.background, (0, 0))
     pygame.display.flip()
+
+  def create_row(self, row, should_fill=True):
+    if len(self.grid_shapes) > row:
+      self.grid_shapes[row] = []
+    else:
+      self.grid_shapes.append([])
+    if len(self.grid_colors) > row:
+      self.grid_colors[row] = []
+    else:
+      self.grid_colors.append([])
+    if len(self.grid_tiles) > row:
+      self.grid_tiles[row] = [] # this leaks tiles but we don't currently use it
+      print 'WARNING LEAK'
+    else:
+      self.grid_tiles.append([])
+    if should_fill:
+      for col in range(0, TILE_COLS):
+        shape = random.randint(0, 3)
+        color = random.randint(0, 3)
+        self.grid_shapes[row].append(shape)
+        self.grid_colors[row].append(color)
+        tile = Tile(shape, color, (col * 16, row * 16))
+        self.tile_sprites.add(tile)
+        self.grid_tiles[row].append(tile)
 
   def draw_colors(self):
     for row in range(0, len(self.grid_colors)):
@@ -124,7 +146,10 @@ class Game(object):
         color = color_row[col]
         if color >= 0:
           if self.grid_tiles[row][col].selected:
-            rgb_color = Game.RGB_TILE_BRIGHT_COLOR[color]
+            rgb_color = Game.RGB_TILE_COLOR[color]
+            rgb_color = (rgb_color[0] * self.pulse_color,
+                         rgb_color[1] * self.pulse_color,
+                         rgb_color[2] * self.pulse_color) 
           else:
             rgb_color = Game.RGB_TILE_COLOR[color]
           self.screen.fill(rgb_color,
@@ -168,6 +193,28 @@ class Game(object):
       self.adjust_slot_pointer()
     self.draw_slots()
 
+  def advance_wall(self):
+    # This is LD so I'm doing the dumb expensive scroll
+    last_row = self.grid_shapes[TILE_ROWS - 2] # -1 x 2 because it's pre-scroll
+    if len(last_row) > 0:
+      for col in range(0, TILE_COLS):
+        print col
+        if last_row[col] != -1:
+          print 'you lose'
+          sys.exit()
+    for row in range(TILE_ROWS - 1, 0, -1):
+      self.grid_shapes[row] = self.grid_shapes[row - 1]
+      self.grid_colors[row] = self.grid_colors[row - 1]
+      self.grid_tiles[row] = self.grid_tiles[row - 1]
+      for tile in self.grid_tiles[row]:
+        if tile:
+          tile.rect.top += 16 
+    self.create_row(0)
+    for i in range(0, 4):
+      if self.slot_selection[i][0] >= 0:
+        self.slot_selection[i] = (self.slot_selection[i][0] + 1,
+                                  self.slot_selection[i][1])
+
   def handle_mouseup(self, pos):
     tile_row, tile_col = self.get_rowcol_from_pos(pos)
     self.select_tile(tile_row, tile_col)
@@ -206,24 +253,52 @@ class Game(object):
     self.clear_slots()
     
   def clear_slots(self):
+    if hasattr(self, 'slot_selection'):
+      for i in range(0, 4):
+        row, col = self.slot_selection[i]
+        if self.grid_tiles[row][col]:
+          self.grid_tiles[row][col].selected = False
     self.slot_selection = [(-1, -1), (-1, -1), (-1, -1), (-1, -1), ]
     self.adjust_slot_pointer()
 
   def draw_slots(self):
     for i in range(0, 4):
-      x = i * 68 + 24
-      y = 480 - 64 - 24
+      x = i * (64 + 4) + 24
+      y = DASHBOARD_START
       row, col = self.slot_selection[i]
       if row >= 0 and col >= 0:      
         shape = self.grid_shapes[row][col]
         color = self.grid_colors[row][col]
-        self.screen.fill(Game.RGB_TILE_BRIGHT_COLOR[color], pygame.Rect((x, y), (64, 64)))
+        print 'tile at %d %d is %d %d' % (row, col, shape, color)
+        self.screen.fill(Game.RGB_TILE_COLOR[color], pygame.Rect((x, y), (64, 64)))
         self.screen.blit(self.tile_images[shape], (x, y))
       self.screen.blit(self.slot_image, (x, y))
 
+  def update_pulse_color(self, fps):
+    if self.pulse_color_dx == 0:
+      self.pulse_color_dx = float(2.0 / 1.0) / fps
+    self.pulse_color += self.pulse_color_dx
+    if self.pulse_color >= 1.0:
+      self.pulse_color = 1.0
+      self.pulse_color_dx = - self.pulse_color_dx
+    if self.pulse_color <= 0.5:
+      self.pulse_color = 0.5
+      self.pulse_color_dx = - self.pulse_color_dx
+
+  def draw_wall_clock(self):
+    remaining = float(self.wall_clock_msec) / float(self.wall_row_duration_msec)
+    self.screen.fill(CLOCK_COLOR, pygame.Rect(0, DASHBOARD_START + 68,
+                     int(remaining * SCREEN_SIZE_X), 16))
+
   def run(self):
     while True:
-      self.clock.tick(60)
+      FPS = 15
+      elapsed = self.clock.tick(FPS)
+      self.wall_clock_msec -= elapsed
+      if self.wall_clock_msec <= 0:
+        self.advance_wall() 
+        self.wall_clock_msec = self.wall_row_duration_msec
+      self.update_pulse_color(FPS)
 
       for event in pygame.event.get():
         if event.type == QUIT:
@@ -241,6 +316,7 @@ class Game(object):
       self.draw_colors()
       self.tile_sprites.draw(self.screen)
       self.draw_slots()
+      self.draw_wall_clock()
       pygame.display.flip()
 
 def main():
