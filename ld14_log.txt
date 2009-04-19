@@ -21,3 +21,12 @@
 +20:36 Did the smooth wall animation and slowed the game down.
 +38:07 Spent about an hour getting py2exe working, which caused some font/icon cleanup.
 +38:25 gameinfo.xml
++38:58 fixed a bug reported by klobad.
++38:59 taking a break (actually a shower) to think about gameplay (actually to get clean).
++39:22 thought of game name: Blood on Stair. This rhymes with how I (mis)pronounce Ludum Dare.
++39:27 Flood of Hair.
++40:58 Flood of Air.
++40:58 Preparing new dist with the special tile.
++41:19 Tracking down the perma-x bug.
++41:46 Came up with simple workaround for perma-x. Need to implement something smart to do full rule.
++41:47 Turns out x tiles are fun. Adding them starting at level 2.

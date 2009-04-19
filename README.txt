@@ -1,6 +1,7 @@
+Flood of Air
 Ludum Dare 14 Entry
 By Mike Tsao
-38:52 into compo
+41:47 into compo
 
 Requirements to run:
 
@@ -38,3 +39,15 @@ Future stuff:
 - Gameplay adjustment. Way too much clicking right now. Is there an easier way
   to do the UI? Also, kind of boring, as expected ("that whole
   making-it-a-good-game thing").
+
+FAQ:
+
+Q. What's with the weird game name?
+A. It rhymes with how I mispronounce Ludum Dare.
+
+Thanks:
+
+- Family (Mary, Thomas, Emily, and Kid #3 From The Future) for moral support,
+  lack of interference, and occasional focus group participation
+- Erik for feedback, suggestions, and bug reports
+- Dave for feedback, pre-coding brainstorming, and bug reports

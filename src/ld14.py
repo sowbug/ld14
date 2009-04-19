@@ -1,3 +1,4 @@
+# Flood of Air
 # Ludum Dare 14
 # Copyright (c) 2009 Mike Tsao
 
@@ -13,19 +14,19 @@ SCREEN_SIZE_X = 320
 SCREEN_SIZE_Y = 480
 ASSET_DIR = 'assets'
 TILE_SIZE = 32
-CLOCK_HEIGHT = 8
+CLOCK_HEIGHT = 7
 
-TILE_SYMBOL = ['A', 'B', 'C', 'D', 'E', 'F']
+TILE_SYMBOL = ['A', 'B', 'C', 'D', 'E', 'X']
+RGB_TILE_COLOR = [(0xff, 0x00, 0x00),
+                  (0x00, 0xf0, 0x00),
+                  (0x80, 0x80, 0xff),
+                  (0xf0, 0xf0, 0x00),
+                  ]
 
 SHAPE_COUNT = len(TILE_SYMBOL)
-COLOR_COUNT = 4
+SPECIAL_SHAPE = SHAPE_COUNT - 1
+COLOR_COUNT = len(RGB_TILE_COLOR)
 TRANSPARENCY_KEY_COLOR = (255, 0, 255)
-
-RGB_TILE_COLOR = [(0xff, 0x00, 0x00),
-                  (0x00, 0xff, 0x00),
-                  (0x80, 0x80, 0xff),
-                  (0xff, 0xff, 0x00),
-                  ]
 
 SLOT_COUNT = 4
 SLOT_SIZE = 64
@@ -39,11 +40,16 @@ DASHBOARD_START = TILE_ROWS * TILE_SIZE
 CLOCK_COLOR = (255, 128, 0)
 BACKGROUND_COLOR = (0xff, 0xff, 0xe0)
 DASHBOARD_COLOR = (0xe0, 0xe0, 0xff)
+SCORE_COLOR = (0, 128, 0)
+GAME_OVER_COLOR = (48, 48, 48)
+SPECIAL_TILE_COLOR = (128, 128, 128)
 
+TILE_COLOR = (16, 16, 16)
 TILE_BACKGROUND_COLOR = (0xc0, 0xc0, 0xc0)
 TILE_BACKGROUND_MARGIN = 5
 SLOT_BACKGROUND_COLOR = DASHBOARD_COLOR
 SLOT_BACKGROUND_MARGIN = 16
+BANNER_ALPHA = 192
 
 def get_font(size):
   return pygame.font.Font('fonts/Surface_Medium.otf', size)
@@ -76,29 +82,54 @@ def load_sound(name):
   return sound
 
 class Tile(pygame.sprite.Sprite):
-  def __init__(self, image, shape, color, top_left):
+  def __init__(self, image, shape, color, top_left, parent_group):
     pygame.sprite.Sprite.__init__(self)
+    self.parent_group = parent_group
     self.shape = shape
     self.color = color
     self.image = image
+    self.original = self.image
     self.rect = pygame.Rect(0, 0, TILE_SIZE, TILE_SIZE)
     self.reposition(top_left)
     self.selected = False
+    self.falling = False
 
   def apply_vertical_offset(self, offset):
-    self.rect.top = self.original_top + offset
+    if not self.falling:
+      self.rect.top = self.original_top + offset
 
   def reposition(self, top_left):
     self.rect.topleft = top_left
     self.original_top = top_left[1]
-    #self.top = self.original_top + offset
+
+  def start_fall(self):
+    self.falling = True
+    self.current_angle = 0
+    self.dx = 1.0 + random.random()
+    self.rot_dx = 1.0 + random.random() * 5.0
+    if self.rect.left > SCREEN_SIZE_X / 2:
+      self.dx = - self.dx
+      self.rot_dx = - self.rot_dx
+    self.dy = -0.05
+
+  def update(self):
+    if not self.falling:
+      return
+    self.dy += 0.65
+    self.rect.left += self.dx
+    self.rect.top += self.dy
+    rotate = pygame.transform.rotate
+    self.current_angle += self.rot_dx
+    self.image = rotate(self.original, self.current_angle)
+    if self.rect.top > SCREEN_SIZE_Y:
+      self.parent_group.remove(self)      
 
 class Score(pygame.sprite.Sprite):
   def __init__(self, score, top_left, parent_group):
     self.parent_group = parent_group
     pygame.sprite.Sprite.__init__(self)
     font = get_font(72)
-    text = font.render('%d' % score, 0, (0, 128, 0))
+    text = font.render('%d' % score, 0, SCORE_COLOR)
     textpos = text.get_rect()
     self.image = pygame.Surface((textpos.bottomright))
     self.image.set_colorkey(TRANSPARENCY_KEY_COLOR)
@@ -116,7 +147,7 @@ class Score(pygame.sprite.Sprite):
     self.dy = - 5.0
 
   def update(self):
-    self.dy += 0.5
+    self.dy += 0.4
     self.rect.left += self.dx
     self.rect.top += self.dy
     rotate = pygame.transform.rotate
@@ -138,7 +169,7 @@ class Game(object):
 
     pygame.init()
     self.screen = pygame.display.set_mode((RIGHT, BOTTOM))
-    pygame.display.set_caption('Ludum Dare 14')
+    pygame.display.set_caption('Ludum Dare 14: Flood of Air')
     pygame.mouse.set_visible(True)
   
     self.background = pygame.Surface(self.screen.get_size()).convert()
@@ -147,9 +178,11 @@ class Game(object):
     self.background.fill(DASHBOARD_COLOR,
                          pygame.Rect(0, DASHBOARD_START, SCREEN_SIZE_X,
                                      SCREEN_SIZE_Y - DASHBOARD_START))
-    
+
     self.pulse_color_dx = 0
     self.pulse_color = 0.75
+    self.special_color_dx = 0
+    self.special_color = 0.75
 
     self.enqueued_banner_messages = []
     self.enqueue_banner_message("Click tiles to add them to the slots")
@@ -169,41 +202,9 @@ class Game(object):
     self.slot_completion_countdown = 0
     
     self.score = 0
-
-    self.tile_images = []
-    font = get_font(36)
-    for shape in range(0, SHAPE_COUNT):
-      image = pygame.Surface((SLOT_SIZE, SLOT_SIZE))
-      image.set_colorkey(TRANSPARENCY_KEY_COLOR)
-      image.fill(TRANSPARENCY_KEY_COLOR)
-      image.fill(SLOT_BACKGROUND_COLOR,
-                 pygame.Rect(SLOT_BACKGROUND_MARGIN,
-                             SLOT_BACKGROUND_MARGIN,
-                             SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2,
-                             SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2))
-      text = font.render(TILE_SYMBOL[shape], 1, (16, 16, 16))
-      textpos = text.get_rect(centerx=SLOT_SIZE / 2)
-      textpos.top = (SLOT_SIZE - font.get_height()) / 2
-      image.blit(text, textpos)
-      self.tile_images.append(image)
-
-    self.small_tile_images = []
-    font = get_font(20)
-    for shape in range(0, SHAPE_COUNT):
-      image = pygame.Surface((TILE_SIZE, TILE_SIZE))
-      image.set_colorkey(TRANSPARENCY_KEY_COLOR)
-      image.fill(TRANSPARENCY_KEY_COLOR)
-      image.fill(TILE_BACKGROUND_COLOR,
-                 pygame.Rect(TILE_BACKGROUND_MARGIN,
-                             TILE_BACKGROUND_MARGIN,
-                             TILE_SIZE - TILE_BACKGROUND_MARGIN * 2,
-                             TILE_SIZE - TILE_BACKGROUND_MARGIN * 2))
-      text = font.render(TILE_SYMBOL[shape], 1, (16, 16, 16))
-      textpos = text.get_rect(centerx=TILE_SIZE / 2)
-      textpos.top = (TILE_SIZE - font.get_height()) / 2
-      image.blit(text, textpos)
-      self.small_tile_images.append(image)
     
+    self.generate_tile_images()
+
     self.slot_image, self.slot_rect = load_image('slot.png', - 1)
     self.slot_image.set_colorkey(TRANSPARENCY_KEY_COLOR)
     self.clear_slots()
@@ -232,11 +233,50 @@ class Game(object):
     self.group_great_sound = load_sound('group_great.wav')
     self.group_bad_sound = load_sound('group_bad.wav')
     self.game_over_sound = load_sound('game_over.wav')
+    self.special_tile_pickup = load_sound('special_tile_pickup.wav') 
 
     self.game_over = False
+    self.special_hint_count = 0
 
     self.screen.blit(self.background, (0, 0))
     pygame.display.flip()
+
+  def generate_tile_images(self):
+    self.tile_images = []
+    font = get_font(36)
+    for shape in range(0, SHAPE_COUNT):
+      image = pygame.Surface((SLOT_SIZE, SLOT_SIZE))
+      image.set_colorkey(TRANSPARENCY_KEY_COLOR)
+      image.fill(TRANSPARENCY_KEY_COLOR)
+      image.fill(SLOT_BACKGROUND_COLOR,
+                 pygame.Rect(SLOT_BACKGROUND_MARGIN,
+                             SLOT_BACKGROUND_MARGIN,
+                             SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2,
+                             SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2))
+      text = font.render(TILE_SYMBOL[shape], 1, TILE_COLOR)
+      textpos = text.get_rect(centerx=SLOT_SIZE / 2)
+      textpos.top = 1 + (SLOT_SIZE - font.get_height()) / 2
+      image.blit(text, textpos)
+      self.tile_images.append(image)
+
+    self.small_tile_images = []
+    font = get_font(20)
+    for shape in range(0, SHAPE_COUNT):
+      image = pygame.Surface((TILE_SIZE, TILE_SIZE))
+      image.set_colorkey(TRANSPARENCY_KEY_COLOR)
+      image.fill(TRANSPARENCY_KEY_COLOR)
+      if shape == SPECIAL_SHAPE:
+        margin = TILE_BACKGROUND_MARGIN + 2
+      else:
+        margin = TILE_BACKGROUND_MARGIN
+      image.fill(TILE_BACKGROUND_COLOR,
+                 pygame.Rect(margin, margin,
+                             TILE_SIZE - margin * 2, TILE_SIZE - margin * 2))
+      text = font.render(TILE_SYMBOL[shape], 1, TILE_COLOR)
+      textpos = text.get_rect(centerx=TILE_SIZE / 2)
+      textpos.top = 1 + (TILE_SIZE - font.get_height()) / 2
+      image.blit(text, textpos)
+      self.small_tile_images.append(image)
 
   def set_level(self, new_level):
     if self.level != new_level:
@@ -275,10 +315,15 @@ class Game(object):
       self.banner = None
     else:
       if self.banner_countdown < 1000:
-        self.banner_alpha = int(255 * float(self.banner_countdown) / 1000.0)
+        self.banner_alpha = int(BANNER_ALPHA * float(self.banner_countdown) / 1000.0)
       else:
-        self.banner_alpha = 255
+        self.banner_alpha = BANNER_ALPHA
       self.banner.set_alpha(self.banner_alpha)
+
+  def get_random_shape_index(self, allow_special=False):
+    if allow_special:
+      return random.randint(0, SHAPE_COUNT - 1)
+    return random.randint(0, SHAPE_COUNT - 2)
 
   def create_row(self, row, should_fill=True):
     if len(self.grid_shapes) > row:
@@ -297,20 +342,40 @@ class Game(object):
       self.grid_tiles.append([])
     if should_fill:
       for col in range(0, TILE_COLS):
-        shape = random.randint(0, SHAPE_COUNT - 1)
+        # The last shape is special. Early levels don't get it. 
+        if self.level < 2:
+          shape = self.get_random_shape_index()
+        else:
+          shape = self.get_random_shape_index(allow_special=True)
+          # The last shape was picked. Go through with it according to a
+          # probability that increases with the levels.
+          if shape == SPECIAL_SHAPE:
+            random_threshold = float(self.level) / 10.0
+            if random_threshold < random.random():
+              # Nope, change to regular shape
+              shape = self.get_random_shape_index()
+
+        # debug
+        if False and random.random() > 0.8:
+          shape = SPECIAL_SHAPE
+        # debug
+        
         color = random.randint(0, COLOR_COUNT - 1)
         self.grid_shapes[row].append(shape)
         self.grid_colors[row].append(color)
         tile = Tile(self.small_tile_images[shape],
-                    shape, color, (col * TILE_SIZE, row * TILE_SIZE))
+                    shape, color, (col * TILE_SIZE, row * TILE_SIZE),
+                    self.tile_sprites)
         self.tile_sprites.add(tile)
         self.grid_tiles[row].append(tile)
 
   def draw_colors(self):
     for row in range(0, len(self.grid_colors)):
       color_row = self.grid_colors[row]      
+      shape_row = self.grid_shapes[row]      
       for col in range(0, len(color_row)):
         color = color_row[col]
+        shape = shape_row[col]
         if color >= 0:
           if self.grid_tiles[row][col].selected:
             rgb_color = RGB_TILE_COLOR[color]
@@ -319,8 +384,13 @@ class Game(object):
                          rgb_color[2] * self.pulse_color) 
           else:
             rgb_color = RGB_TILE_COLOR[color]
+          if shape == SPECIAL_SHAPE:
+            rgb_color = SPECIAL_TILE_COLOR
+            rgb_color = (rgb_color[0] * self.special_color,
+                         rgb_color[1] * self.special_color,
+                         rgb_color[2] * self.special_color) 
           if self.game_over:
-            rgb_color = (48, 48, 48)
+            rgb_color = GAME_OVER_COLOR
           rect = pygame.Rect((col * TILE_SIZE + 1, row * TILE_SIZE + 1),
                              (TILE_SIZE - 2, TILE_SIZE - 2))
           rect.top += self.vertical_tile_offset
@@ -369,6 +439,15 @@ class Game(object):
         selected = False
 
     if selected:
+      if self.grid_shapes[row][col] == SPECIAL_SHAPE:
+        self.unselect_tile_sound.play()
+        if self.special_hint_count < 3:
+          self.special_hint_count += 1
+          self.enqueue_banner_message('%s tiles are special!' % TILE_SYMBOL[SPECIAL_SHAPE])
+          self.enqueue_banner_message('Remove their neighbors!')
+        selected = False
+      
+    if selected:
       self.slot_selection[self.current_slot] = (row, col)
       self.grid_tiles[row][col].selected = True
       self.adjust_slot_pointer()
@@ -377,7 +456,8 @@ class Game(object):
 
   def advance_wall(self):
     self.wall_advancement_sound.play()
-    # This is LD so I'm doing the dumb expensive scroll
+    # This is LD so I'm doing the dumb expensive scroll rather than
+    # some sort of interesting sliding view on the data
     last_row = self.grid_shapes[TILE_ROWS - 2] # -1 x 2 because it's pre-scroll
     last_row = self.grid_shapes[10] # REMOVE THIS
     if len(last_row) > 0:
@@ -416,13 +496,51 @@ class Game(object):
     if slot_pos >= 0:
       self.unselect_slot(slot_pos)
 
+  def safe_get_grid_shape(self, row, col):
+    if len(self.grid_shapes) <= row:
+      return -1
+    if len(self.grid_shapes[row]) <= col:
+      return -1
+    return self.grid_shapes[row][col]
+    
   def remove_tile(self, row, col):
     self.grid_shapes[row][col] = - 1
     self.grid_colors[row][col] = - 1
     tile = self.grid_tiles[row][col]
     self.grid_tiles[row][col] = None
-    self.tile_sprites.remove(tile)
-    del tile
+    tile.start_fall()
+    self.scan_for_special_tiles(row, col)
+
+  def check_special_tile(self, row, col):
+    print 'checking special tile %d %d' % (row, col)
+    if self.safe_get_grid_shape(row, col) != SPECIAL_SHAPE:
+      return
+    neighbors = []
+    if row >= 1:
+      neighbors.append(self.safe_get_grid_shape(row - 1, col))
+    if row < TILE_ROWS - 1:
+      neighbors.append(self.safe_get_grid_shape(row + 1, col))
+    if col >= 1:
+      neighbors.append(self.safe_get_grid_shape(row, col - 1))
+    if col < TILE_COLS - 1:
+      neighbors.append(self.safe_get_grid_shape(row, col + 1))
+    for n in neighbors:
+      if n != -1 and n != SPECIAL_SHAPE:
+        return
+    self.remove_tile(row, col)
+    self.special_tile_pickup.play()
+
+  # Given that a tile was just removed, see whether the removal affects
+  # a special tile, and handle if that's the case
+  def scan_for_special_tiles(self, row, col):
+    if row >= 1:
+      self.check_special_tile(row - 1, col)
+    if row < TILE_ROWS - 1:
+      self.check_special_tile(row + 1, col)
+    if col >= 1:
+      self.check_special_tile(row, col - 1)
+    if col < TILE_COLS - 1:
+      self.check_special_tile(row, col + 1)
 
   def handle_slot_completion(self):
     shapes_same = True
@@ -468,7 +586,7 @@ class Game(object):
   def float_score_bubble(self, score, position):
     sprite = Score(score, position, self.score_sprites)
     self.score_sprites.add(sprite)
-    
+
   def clear_slots(self):
     if hasattr(self, 'slot_selection'):
       for i in range(0, SLOT_COUNT):
@@ -487,7 +605,7 @@ class Game(object):
         shape = self.grid_shapes[row][col]
         color = self.grid_colors[row][col]
         self.screen.fill(RGB_TILE_COLOR[color],
-                         pygame.Rect((x, y), (64, 64)))
+                         pygame.Rect((x, y), (SLOT_SIZE, SLOT_SIZE)))
         self.screen.blit(self.tile_images[shape], (x, y))
       self.screen.blit(self.slot_image, (x, y))
 
@@ -502,6 +620,16 @@ class Game(object):
       self.pulse_color = 0.5
       self.pulse_color_dx = - self.pulse_color_dx
 
+    if self.special_color_dx == 0:
+      self.special_color_dx = float(1.0 / 1.0) / fps
+    self.special_color += self.special_color_dx
+    if self.special_color >= 1.0:
+      self.special_color = 1.0
+      self.special_color_dx = - self.special_color_dx
+    if self.special_color <= 0.5:
+      self.special_color = 0.5
+      self.special_color_dx = - self.special_color_dx
+
   def draw_wall_clock(self):
     remaining = float(self.wall_clock_msec) / float(self.wall_row_duration_msec)
     self.screen.fill(CLOCK_COLOR,
@@ -511,7 +639,8 @@ class Game(object):
 
   def draw_floating_text(self):
     if self.banner:
-      self.screen.blit(self.banner, (0, 300))
+      self.screen.blit(self.banner,
+                       (0, DASHBOARD_START - self.banner.get_height() - SLOT_MARGIN))
 
   def tick_vertical_tile_offset(self):
     remaining = float(self.wall_clock_msec) / float(self.wall_row_duration_msec)
@@ -525,7 +654,7 @@ class Game(object):
 
   def draw_score(self):
     font = get_font(18)
-    text = font.render('Score: %6d' % self.score, 1, (32, 32, 128))
+    text = font.render('Score: %06d' % self.score, 1, SCORE_COLOR)
     textpos = text.get_rect()
     textpos.bottomright = (SCREEN_SIZE_X, SCREEN_SIZE_Y)
     self.screen.blit(text, textpos)
