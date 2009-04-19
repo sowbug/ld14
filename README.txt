@@ -1,6 +1,6 @@
 Ludum Dare 14 Entry
-37:40 into compo
-By Mike Tsao.
+By Mike Tsao
+38:25 into compo
 
 Requirements to run:
 

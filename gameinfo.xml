@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<game name="Sowbug's Ludum Dare #14 Entry" version="38.25"
+  url="http://www.sowbug.org/ld14/" language="Python">
+  <notes>My first LD entry. As you can probably see, my goal was to
+    prove that I could complete a game, rather than to try to build a
+    good one.</notes>
+  <entrypoint windows="true" label="Main Game" path="ld14.exe" />
+  <author name="Mike Tsao" url="http://www.sowbug.org/" />
+  <screenshot title="Main Screen" description="Typical game play."
+    path="screenshot.png" />
+</game>

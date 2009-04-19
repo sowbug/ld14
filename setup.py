@@ -9,7 +9,9 @@ import os
 import glob, shutil
 sys.argv.append('py2exe')
 
-VERSION = '38.07' # Number of hours/minutes into compo
+DIST_DIR='dist/'
+
+VERSION = '38.25' # Number of hours/minutes into compo
 AUTHOR_NAME = 'Mike Tsao (Sowbug)'
 AUTHOR_EMAIL = 'mike.tsao@gmail.com'
 AUTHOR_URL = 'http://www.sowbug.org/'
@@ -61,10 +63,10 @@ MODULE_EXCLUDES = [
 # Remove the build tree on exit automatically
 REMOVE_BUILD_ON_EXIT = True
 
-if os.path.exists('dist/'): shutil.rmtree('dist/')
+if os.path.exists(DIST_DIR): shutil.rmtree(DIST_DIR)
  
 extra_files = [
-('', ['README.txt', 'ld14_log.txt']),
+('', ['README.txt', 'LICENSE.txt', 'ld14_log.txt', 'screenshot.png', 'gameinfo.xml']),
 ('assets', glob.glob(os.path.join('assets', '*.png'))),
 ('assets', glob.glob(os.path.join('assets', '*.wav'))),
 ('assets', glob.glob(os.path.join('assets', '*.ico'))),
