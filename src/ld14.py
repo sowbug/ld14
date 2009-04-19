@@ -45,6 +45,9 @@ TILE_BACKGROUND_MARGIN = 5
 SLOT_BACKGROUND_COLOR = DASHBOARD_COLOR
 SLOT_BACKGROUND_MARGIN = 16
 
+def get_font(size):
+  return pygame.font.Font('fonts/Surface_Medium.otf', size)
+  
 def load_image(name, colorkey=None):
   fullname = os.path.join(ASSET_DIR, name)
   try:
@@ -94,7 +97,7 @@ class Score(pygame.sprite.Sprite):
   def __init__(self, score, top_left, parent_group):
     self.parent_group = parent_group
     pygame.sprite.Sprite.__init__(self)
-    font = pygame.font.Font(None, 72)
+    font = get_font(72)
     text = font.render('%d' % score, 0, (0, 128, 0))
     textpos = text.get_rect()
     self.image = pygame.Surface((textpos.bottomright))
@@ -168,7 +171,7 @@ class Game(object):
     self.score = 0
 
     self.tile_images = []
-    font = pygame.font.Font(None, 36)
+    font = get_font(36)
     for shape in range(0, SHAPE_COUNT):
       image = pygame.Surface((SLOT_SIZE, SLOT_SIZE))
       image.set_colorkey(TRANSPARENCY_KEY_COLOR)
@@ -185,7 +188,7 @@ class Game(object):
       self.tile_images.append(image)
 
     self.small_tile_images = []
-    font = pygame.font.Font(None, 20)
+    font = get_font(20)
     for shape in range(0, SHAPE_COUNT):
       image = pygame.Surface((TILE_SIZE, TILE_SIZE))
       image.set_colorkey(TRANSPARENCY_KEY_COLOR)
@@ -217,7 +220,7 @@ class Game(object):
       self.create_row(row, row < 5) # level 1, fill in just 5 rows at top
 
     if pygame.font:
-      self.font = pygame.font.Font(None, 20)
+      self.font = get_font(20)
     self.banner = None
     self.banner_countdown = 0
     self.banner_alpha = 0
@@ -516,7 +519,7 @@ class Game(object):
     self.level_duration_msec = self.wall_row_duration_msec * 4
 
   def draw_score(self):
-    font = pygame.font.Font(None, 18)
+    font = get_font(18)
     text = font.render('Score: %6d' % self.score, 1, (32, 32, 128))
     textpos = text.get_rect()
     textpos.bottomright = (SCREEN_SIZE_X, SCREEN_SIZE_Y)
