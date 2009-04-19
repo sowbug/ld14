@@ -23,7 +23,7 @@ TRANSPARENCY_KEY_COLOR = (255, 0, 255)
 
 RGB_TILE_COLOR = [(0xff, 0x00, 0x00),
                   (0x00, 0xff, 0x00),
-                  (0x30, 0x30, 0xff),
+                  (0x80, 0x80, 0xff),
                   (0xff, 0xff, 0x00),
                   ]
 
@@ -90,8 +90,40 @@ class Tile(pygame.sprite.Sprite):
     self.original_top = top_left[1]
     #self.top = self.original_top + offset
 
+class Score(pygame.sprite.Sprite):
+  def __init__(self, score, top_left, parent_group):
+    self.parent_group = parent_group
+    pygame.sprite.Sprite.__init__(self)
+    font = pygame.font.Font(None, 72)
+    text = font.render('%d' % score, 1, (0, 128, 0))
+    textpos = text.get_rect()
+    self.image = pygame.Surface((textpos.bottomright))
+    self.image.set_colorkey((1, 1, 0))
+    self.image.fill((1, 1, 0))
+    self.image.blit(text, textpos)
+    self.original = self.image
+    self.rect = textpos
+    self.rect.topleft = top_left
+    self.current_angle = 0
+    self.dx = 1.0 + random.random()
+    self.rot_dx = 1.0 + random.random()
+    if self.rect.left > SCREEN_SIZE_X / 2:
+      self.dx = - self.dx
+      self.rot_dx = - self.rot_dx
+    self.dy = - 5.0
+
+  def update(self):
+    self.dy += 0.5
+    self.rect.left += self.dx
+    self.rect.top += self.dy
+    rotate = pygame.transform.rotate
+    self.current_angle += self.rot_dx
+    self.image = rotate(self.original, self.current_angle)
+    if self.rect.top > SCREEN_SIZE_Y:
+      self.parent_group.remove(self)      
+
 class Game(object):
-  FPS = 15
+  FPS = 30
 
   def __init__(self):
     self.clock = pygame.time.Clock()
@@ -115,11 +147,25 @@ class Game(object):
     
     self.pulse_color_dx = 0
     self.pulse_color = 0.75
-    
-    self.wall_row_duration_msec = 10000
+
+    self.enqueued_banner_messages = []
+    self.enqueue_banner_message("Click tiles to add them to the slots")
+    self.enqueue_banner_message("Remove tiles by grouping them in the slots")
+    self.enqueue_banner_message("A group is four of a color or shape")
+    self.enqueue_banner_message("Don't let the tiles reach the bottom!")
+
+    self.level = 0
+    self.set_level(1)
+    self.update_wall_row_duration()
+    self.update_level_duration()
     self.wall_clock_msec = self.wall_row_duration_msec
+    self.level_clock_msec = self.level_duration_msec
 
     self.vertical_tile_offset = 0
+    
+    self.slot_completion_countdown = 0
+    
+    self.score = 0
 
     self.tile_images = []
     font = pygame.font.Font(None, 36)
@@ -160,6 +206,7 @@ class Game(object):
     self.clear_slots()
 
     self.tile_sprites = pygame.sprite.Group([])
+    self.score_sprites = pygame.sprite.Group([])
     self.grid_shapes = []
     self.grid_colors = []
     self.grid_tiles = []
@@ -179,22 +226,23 @@ class Game(object):
     self.select_tile_sound = load_sound('select_tile.wav')
     self.unselect_tile_sound = load_sound('unselect_tile.wav')
     self.group_good_sound = load_sound('group_good.wav')
+    self.group_great_sound = load_sound('group_great.wav')
     self.group_bad_sound = load_sound('group_bad.wav')
     self.game_over_sound = load_sound('game_over.wav')
-
-    self.enqueued_banner_messages = []
-    self.enqueue_banner_message("Welcome to Sowbug's Ludum Dare #14 entry")
-    self.enqueue_banner_message("Click tiles to add them to the slots")
-    self.enqueue_banner_message("Remove tiles by grouping them in the slots")
-    self.enqueue_banner_message("Four of one color are a group")
-    self.enqueue_banner_message("So are four of one shape")
-    self.enqueue_banner_message("Don't let the tiles reach the bottom!")
 
     self.game_over = False
 
     self.screen.blit(self.background, (0, 0))
     pygame.display.flip()
 
+  def set_level(self, new_level):
+    if self.level != new_level:
+      self.level = new_level
+      self.enqueue_banner_message("Current Level: %d" % self.level)
+
+  def get_wall_row_duration_msec(self):
+    return max(5000, 15000 - pow(self.level, 1.4) * 1000)
+  
   def generate_banner(self, text):
     if self.font:
       self.banner = pygame.Surface((SCREEN_SIZE_X,
@@ -280,14 +328,13 @@ class Game(object):
     y = pos[1] - self.vertical_tile_offset
     return y / TILE_SIZE, x / TILE_SIZE
 
-  # return true if this adjustment caused an event to occur
   def adjust_slot_pointer(self):
     for i in range(0, SLOT_COUNT):
       if self.slot_selection[i] == (-1, - 1):
         self.current_slot = i
-        return False
-    self.handle_slot_completion()
-    return True
+        return
+    self.current_slot = - 1
+    self.slot_completion_countdown = 250
 
   def unselect_slot(self, index):
     (row, col) = self.slot_selection[index]
@@ -301,12 +348,13 @@ class Game(object):
     selected = True
     
     # already selected this tile in prior slot?
-    for i in range(0, self.current_slot):
-      (t_row, t_col) = self.slot_selection[i]
-      if t_row == row and t_col == col:
-        self.unselect_slot(i)
-        selected = False
-        break
+    if self.current_slot >= 0:
+      for i in range(0, self.current_slot):
+        (t_row, t_col) = self.slot_selection[i]
+        if t_row == row and t_col == col:
+          self.unselect_slot(i)
+          selected = False
+          break
 
     # tried to select an empty tile?
     if selected:
@@ -316,8 +364,8 @@ class Game(object):
     if selected:
       self.slot_selection[self.current_slot] = (row, col)
       self.grid_tiles[row][col].selected = True
-      if not self.adjust_slot_pointer():
-        self.select_tile_sound.play()
+      self.adjust_slot_pointer()
+      self.select_tile_sound.play()
     self.draw_slots()
 
   def advance_wall(self):
@@ -348,9 +396,9 @@ class Game(object):
 
   def get_slot_from_pos(self, pos):
     if pos[1] < DASHBOARD_START:
-      return -1
+      return - 1
     if pos[0] < SLOT_LEFT_MARGIN or pos[0] > SCREEN_SIZE_X - SLOT_LEFT_MARGIN:
-      return -1
+      return - 1
     return (pos[0] - SLOT_LEFT_MARGIN) / (SLOT_SIZE + SLOT_MARGIN)
 
   def handle_mouseup(self, pos):
@@ -387,14 +435,33 @@ class Game(object):
           colors_same = False
       last_color = color
     if shapes_same or colors_same:
+      temp_score = 0
+      row_sum = 0
+      col_sum = 0
       for i in range(0, SLOT_COUNT):
         row, col = self.slot_selection[i]
         self.remove_tile(row, col)
-        self.group_good_sound.play()
+        row_sum += row
+        col_sum += col
+        temp_score = TILE_ROWS - row
+        temp_score *= self.level
+        if shapes_same and colors_same:
+          temp_score *= 3
+          self.group_great_sound.play()
+        else:
+          self.group_good_sound.play()
+      self.score += temp_score
+      position = (TILE_SIZE * col_sum / SLOT_COUNT,
+                  TILE_SIZE * row_sum / SLOT_COUNT)
+      self.float_score_bubble(temp_score, position)        
     else:
       self.group_bad_sound.play()
     self.clear_slots()
 
+  def float_score_bubble(self, score, position):
+    sprite = Score(score, position, self.score_sprites)
+    self.score_sprites.add(sprite)
+    
   def clear_slots(self):
     if hasattr(self, 'slot_selection'):
       for i in range(0, SLOT_COUNT):
@@ -443,29 +510,56 @@ class Game(object):
     remaining = float(self.wall_clock_msec) / float(self.wall_row_duration_msec)
     self.vertical_tile_offset = int((1.0 - remaining) * TILE_SIZE)
 
+  def update_wall_row_duration(self):
+    self.wall_row_duration_msec = self.get_wall_row_duration_msec()
+
+  def update_level_duration(self):
+    self.level_duration_msec = self.wall_row_duration_msec * 4
+
+  def draw_score(self):
+    font = pygame.font.Font(None, 18)
+    text = font.render('Score: %6d' % self.score, 1, (32, 32, 128))
+    textpos = text.get_rect()
+    textpos.bottomright = (SCREEN_SIZE_X, SCREEN_SIZE_Y)
+    self.screen.blit(text, textpos)
+
   def run(self):
     while True:
       elapsed = self.clock.tick(Game.FPS)
       if not self.game_over:
         self.wall_clock_msec -= elapsed
         if self.wall_clock_msec <= 0:
-          self.advance_wall() 
+          self.advance_wall()
+          self.update_wall_row_duration()
           self.wall_clock_msec = self.wall_row_duration_msec
         self.tick_vertical_tile_offset()
+        self.level_clock_msec -= elapsed
+        if self.level_clock_msec <= 0:
+          self.set_level(self.level + 1)
+          self.update_level_duration()
+          self.level_clock_msec = self.level_duration_msec
+          
       self.update_pulse_color(Game.FPS)
       self.tick_banner(elapsed)
+      if self.slot_completion_countdown > 0:
+        self.slot_completion_countdown -= elapsed
+        if self.slot_completion_countdown <= 0:
+          self.slot_completion_countdown = 0
+          self.handle_slot_completion()
 
       for event in pygame.event.get():
         if event.type == QUIT:
           return
         elif event.type == KEYDOWN and event.key == K_ESCAPE:
           return
-        elif event.type == MOUSEBUTTONUP and not self.game_over:
-          self.handle_mouseup(event.pos)
+        elif event.type == MOUSEBUTTONUP:
+          if self.slot_completion_countdown == 0 and not self.game_over:
+            self.handle_mouseup(event.pos)
 
       self.tile_sprites.update()
       for tile in self.tile_sprites:
         tile.apply_vertical_offset(self.vertical_tile_offset)
+      self.score_sprites.update()
 
       self.screen.blit(self.background, (0, 0))
       self.draw_colors()
@@ -473,6 +567,8 @@ class Game(object):
       self.draw_slots()
       self.draw_wall_clock()
       self.draw_floating_text()
+      self.draw_score()
+      self.score_sprites.draw(self.screen)
       pygame.display.flip()
 
 def main():
