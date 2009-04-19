@@ -30,3 +30,5 @@
 +41:19 Tracking down the perma-x bug.
 +41:46 Came up with simple workaround for perma-x. Need to implement something smart to do full rule.
 +41:47 Turns out x tiles are fun. Adding them starting at level 2.
++42:15 Finished uploading final.
++42:17 OK, now really finished.

@@ -11,7 +11,7 @@ sys.argv.append('py2exe')
 
 DIST_DIR='dist/'
 
-VERSION = '41.47' # Number of hours/minutes into compo
+VERSION = '42.17' # Number of hours/minutes into compo
 AUTHOR_NAME = 'Mike Tsao (Sowbug)'
 AUTHOR_EMAIL = 'mike.tsao@gmail.com'
 AUTHOR_URL = 'http://www.sowbug.org/'
@@ -73,6 +73,7 @@ extra_files = [
 ('assets', glob.glob(os.path.join('assets', '*.sfs'))),
 ('fonts', glob.glob(os.path.join('fonts', '*.otf'))),
 ('src', glob.glob(os.path.join('src', '*.py'))),
+('compo', glob.glob(os.path.join('compo', '*.jpg'))),
 ]
 
 setup(windows=[{'script': SCRIPT_MAIN,
