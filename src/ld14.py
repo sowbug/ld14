@@ -95,11 +95,11 @@ class Score(pygame.sprite.Sprite):
     self.parent_group = parent_group
     pygame.sprite.Sprite.__init__(self)
     font = pygame.font.Font(None, 72)
-    text = font.render('%d' % score, 1, (0, 128, 0))
+    text = font.render('%d' % score, 0, (0, 128, 0))
     textpos = text.get_rect()
     self.image = pygame.Surface((textpos.bottomright))
-    self.image.set_colorkey((1, 1, 0))
-    self.image.fill((1, 1, 0))
+    self.image.set_colorkey(TRANSPARENCY_KEY_COLOR)
+    self.image.fill(TRANSPARENCY_KEY_COLOR)
     self.image.blit(text, textpos)
     self.original = self.image
     self.rect = textpos
@@ -348,13 +348,12 @@ class Game(object):
     selected = True
     
     # already selected this tile in prior slot?
-    if self.current_slot >= 0:
-      for i in range(0, self.current_slot):
-        (t_row, t_col) = self.slot_selection[i]
-        if t_row == row and t_col == col:
-          self.unselect_slot(i)
-          selected = False
-          break
+    for i in range(0, SLOT_COUNT):
+      (t_row, t_col) = self.slot_selection[i]
+      if t_row == row and t_col == col:
+        self.unselect_slot(i)
+        selected = False
+        break
 
     # tried to select an empty tile?
     if selected:
