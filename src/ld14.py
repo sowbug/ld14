@@ -349,7 +349,12 @@ class Game(object):
 
   def select_tile(self, row, col):
     selected = True
-    
+
+    if len(self.grid_shapes) - 1 < row:
+      return
+    if len(self.grid_shapes[row]) - 1 < col:
+      return
+
     # already selected this tile in prior slot?
     for i in range(0, SLOT_COUNT):
       (t_row, t_col) = self.slot_selection[i]
