@@ -9,7 +9,7 @@ import os
 import glob, shutil
 sys.argv.append('py2exe')
 
-VERSION = '1.0'
+VERSION = '38.07' # Number of hours/minutes into compo
 AUTHOR_NAME = 'Mike Tsao (Sowbug)'
 AUTHOR_EMAIL = 'mike.tsao@gmail.com'
 AUTHOR_URL = 'http://www.sowbug.org/'

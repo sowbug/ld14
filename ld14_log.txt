@@ -18,4 +18,5 @@
   - Restart game at end.
   - Levelling up: when x% of board is gone, increase level?
   - Score: 1 point for low tiles, more for high tiles, multiplier for 4 of both same shape/color
-+20:36 Did the smooth wall animation and slowed the game down. 
++20:36 Did the smooth wall animation and slowed the game down.
++38:07 Spent about an hour getting py2exe working, which caused some font/icon cleanup.
