@@ -22,6 +22,11 @@ RGB_TILE_COLOR = [(0xff, 0x00, 0x00),
                   (0x80, 0x80, 0xff),
                   (0xf0, 0xf0, 0x00),
                   ]
+RGB_TILE_END_COLOR = [(0xcf, 0x00, 0x00),
+                      (0x00, 0xcf, 0x00),
+                      (0x6f, 0x6f, 0xcf),
+                      (0xaf, 0xaf, 0x00),
+                      ]
 
 SHAPE_COUNT = len(TILE_SYMBOL)
 SPECIAL_SHAPE = SHAPE_COUNT - 1
@@ -39,15 +44,19 @@ TILE_ROWS = (SCREEN_SIZE_Y - 80) / TILE_SIZE
 DASHBOARD_START = TILE_ROWS * TILE_SIZE
 CLOCK_COLOR = (255, 128, 0)
 BACKGROUND_COLOR = (0xff, 0xff, 0xe0)
+BACKGROUND_END_COLOR = (0xe8, 0xe8, 0xd8)
 DASHBOARD_COLOR = (0xe0, 0xe0, 0xff)
+DASHBOARD_END_COLOR = (0xc8, 0xc8, 0xf8)
 SCORE_COLOR = (0, 128, 0)
 GAME_OVER_COLOR = (48, 48, 48)
 SPECIAL_TILE_COLOR = (128, 128, 128)
 
 TILE_COLOR = (16, 16, 16)
-TILE_BACKGROUND_COLOR = (0xc0, 0xc0, 0xc0)
+TILE_BACKGROUND_COLOR = DASHBOARD_COLOR
+TILE_BACKGROUND_END_COLOR = (0xa8, 0xa8, 0xc8)
 TILE_BACKGROUND_MARGIN = 5
 SLOT_BACKGROUND_COLOR = DASHBOARD_COLOR
+SLOT_BACKGROUND_END_COLOR = (0xa0, 0xa0, 0xc0)
 SLOT_BACKGROUND_MARGIN = 16
 BANNER_ALPHA = 192
 
@@ -110,7 +119,7 @@ class Tile(pygame.sprite.Sprite):
     if self.rect.left > SCREEN_SIZE_X / 2:
       self.dx = - self.dx
       self.rot_dx = - self.rot_dx
-    self.dy = -0.05
+    self.dy = - 0.05
 
   def update(self):
     if not self.falling:
@@ -173,12 +182,14 @@ class Game(object):
     pygame.mouse.set_visible(True)
   
     self.background = pygame.Surface(self.screen.get_size()).convert()
-    self.background.fill(BACKGROUND_COLOR,
-                         pygame.Rect(0, 0, SCREEN_SIZE_X, DASHBOARD_START))
-    self.background.fill(DASHBOARD_COLOR,
-                         pygame.Rect(0, DASHBOARD_START, SCREEN_SIZE_X,
-                                     SCREEN_SIZE_Y - DASHBOARD_START))
+    self.do_gradient(self.background, pygame.Rect(0, 0, SCREEN_SIZE_X, DASHBOARD_START),
+                     BACKGROUND_COLOR, BACKGROUND_COLOR)
+    self.do_gradient(self.background, pygame.Rect(0, DASHBOARD_START, SCREEN_SIZE_X,
+                                                  SCREEN_SIZE_Y - DASHBOARD_START),
+                                                  DASHBOARD_COLOR, DASHBOARD_END_COLOR)
 
+    self.prerender()
+    
     self.pulse_color_dx = 0
     self.pulse_color = 0.75
     self.special_color_dx = 0
@@ -241,6 +252,24 @@ class Game(object):
     self.screen.blit(self.background, (0, 0))
     pygame.display.flip()
 
+  def do_gradient(self, image, rect, bg_color, bg_gradient):
+    #image.fill(bg_color, rect)
+    #return
+    x1 = rect.left
+    x2 = rect.right
+    a, b = bg_color, bg_gradient
+    y1 = rect.top
+    y2 = rect.bottom
+    h = rect.height
+    rate = (float((b[0] - a[0]) / h), (float(b[1] - a[1]) / h),
+            (float(b[2] - a[2]) / h))
+    for line in range(y1, y2):
+      offset = line - y1
+      color = (min(max(a[0] + (rate[0] * offset), 0), 255),
+               min(max(a[1] + (rate[1] * offset), 0), 255),
+               min(max(a[2] + (rate[2] * offset), 0), 255))
+      pygame.draw.line(image, color, (x1, line), (x2, line))
+
   def generate_tile_images(self):
     self.tile_images = []
     font = get_font(36)
@@ -248,11 +277,12 @@ class Game(object):
       image = pygame.Surface((SLOT_SIZE, SLOT_SIZE))
       image.set_colorkey(TRANSPARENCY_KEY_COLOR)
       image.fill(TRANSPARENCY_KEY_COLOR)
-      image.fill(SLOT_BACKGROUND_COLOR,
-                 pygame.Rect(SLOT_BACKGROUND_MARGIN,
-                             SLOT_BACKGROUND_MARGIN,
-                             SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2,
-                             SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2))
+      self.do_gradient(image,
+                       pygame.Rect(SLOT_BACKGROUND_MARGIN,
+                                   SLOT_BACKGROUND_MARGIN,
+                                   SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2,
+                                   SLOT_SIZE - SLOT_BACKGROUND_MARGIN * 2),
+                                   SLOT_BACKGROUND_COLOR, SLOT_BACKGROUND_END_COLOR)
       text = font.render(TILE_SYMBOL[shape], 1, TILE_COLOR)
       textpos = text.get_rect(centerx=SLOT_SIZE / 2)
       textpos.top = 1 + (SLOT_SIZE - font.get_height()) / 2
@@ -269,9 +299,10 @@ class Game(object):
         margin = TILE_BACKGROUND_MARGIN + 2
       else:
         margin = TILE_BACKGROUND_MARGIN
-      image.fill(TILE_BACKGROUND_COLOR,
-                 pygame.Rect(margin, margin,
-                             TILE_SIZE - margin * 2, TILE_SIZE - margin * 2))
+      self.do_gradient(image,
+                       pygame.Rect(margin, margin,
+                                   TILE_SIZE - margin * 2, TILE_SIZE - margin * 2),
+                                   TILE_BACKGROUND_COLOR, TILE_BACKGROUND_END_COLOR)
       text = font.render(TILE_SYMBOL[shape], 1, TILE_COLOR)
       textpos = text.get_rect(centerx=TILE_SIZE / 2)
       textpos.top = 1 + (TILE_SIZE - font.get_height()) / 2
@@ -377,24 +408,40 @@ class Game(object):
         color = color_row[col]
         shape = shape_row[col]
         if color >= 0:
+          use_prerendered = False
           if self.grid_tiles[row][col].selected:
             rgb_color = RGB_TILE_COLOR[color]
             rgb_color = (rgb_color[0] * self.pulse_color,
                          rgb_color[1] * self.pulse_color,
                          rgb_color[2] * self.pulse_color) 
+            rgb_end_color = RGB_TILE_END_COLOR[color]
+            rgb_end_color = (rgb_end_color[0] * self.pulse_color,
+                             rgb_end_color[1] * self.pulse_color,
+                             rgb_end_color[2] * self.pulse_color) 
           else:
-            rgb_color = RGB_TILE_COLOR[color]
+            use_prerendered = True
           if shape == SPECIAL_SHAPE:
+            use_prerendered = False
             rgb_color = SPECIAL_TILE_COLOR
             rgb_color = (rgb_color[0] * self.special_color,
                          rgb_color[1] * self.special_color,
-                         rgb_color[2] * self.special_color) 
+                         rgb_color[2] * self.special_color)
+            rgb_end_color = rgb_color 
           if self.game_over:
+            use_prerendered = False
             rgb_color = GAME_OVER_COLOR
+            rgb_end_color = GAME_OVER_COLOR
           rect = pygame.Rect((col * TILE_SIZE + 1, row * TILE_SIZE + 1),
                              (TILE_SIZE - 2, TILE_SIZE - 2))
           rect.top += self.vertical_tile_offset
-          self.screen.fill(rgb_color, rect)
+          if use_prerendered:
+            self.screen.blit(self.tile_prerenders[color], rect)
+          else:
+            # This uses a little too much CPU  
+            if True:
+              self.do_gradient(self.screen, rect, rgb_color, rgb_end_color)
+            else:
+              self.screen.fill(rgb_color, rect)
 
   def get_rowcol_from_pos(self, pos):
     x = pos[0]
@@ -498,9 +545,9 @@ class Game(object):
 
   def safe_get_grid_shape(self, row, col):
     if len(self.grid_shapes) <= row:
-      return -1
+      return - 1
     if len(self.grid_shapes[row]) <= col:
-      return -1
+      return - 1
     return self.grid_shapes[row][col]
     
   def remove_tile(self, row, col):
@@ -512,7 +559,6 @@ class Game(object):
     self.scan_for_special_tiles(row, col)
 
   def check_special_tile(self, row, col):
-    print 'checking special tile %d %d' % (row, col)
     if self.safe_get_grid_shape(row, col) != SPECIAL_SHAPE:
       return
     neighbors = []
@@ -525,7 +571,7 @@ class Game(object):
     if col < TILE_COLS - 1:
       neighbors.append(self.safe_get_grid_shape(row, col + 1))
     for n in neighbors:
-      if n != -1 and n != SPECIAL_SHAPE:
+      if n != - 1 and n != SPECIAL_SHAPE:
         return
     self.remove_tile(row, col)
     self.special_tile_pickup.play()
@@ -596,6 +642,22 @@ class Game(object):
     self.slot_selection = [(-1, - 1), (-1, - 1), (-1, - 1), (-1, - 1), ]
     self.adjust_slot_pointer()
 
+  def prerender(self):
+    self.slot_prerenders = []
+    self.tile_prerenders = []
+    for color in range(0, COLOR_COUNT):
+      image = pygame.Surface((SLOT_SIZE, SLOT_SIZE))
+      self.do_gradient(image,
+                       pygame.Rect((0, 0), (SLOT_SIZE, SLOT_SIZE)),
+                       RGB_TILE_COLOR[color], RGB_TILE_END_COLOR[color])
+      self.slot_prerenders.append(image)
+
+      image = pygame.Surface((TILE_SIZE, TILE_SIZE))
+      self.do_gradient(image,
+                       pygame.Rect((0, 0), (TILE_SIZE, TILE_SIZE)),
+                       RGB_TILE_COLOR[color], RGB_TILE_END_COLOR[color])
+      self.tile_prerenders.append(image)
+
   def draw_slots(self):
     for i in range(0, SLOT_COUNT):
       x = i * (SLOT_SIZE + SLOT_MARGIN) + SLOT_LEFT_MARGIN
@@ -604,8 +666,9 @@ class Game(object):
       if row >= 0 and col >= 0:
         shape = self.grid_shapes[row][col]
         color = self.grid_colors[row][col]
-        self.screen.fill(RGB_TILE_COLOR[color],
-                         pygame.Rect((x, y), (SLOT_SIZE, SLOT_SIZE)))
+        self.screen.blit(self.slot_prerenders[color],
+                         pygame.Rect((x, y),
+                                     (SLOT_SIZE, SLOT_SIZE)))
         self.screen.blit(self.tile_images[shape], (x, y))
       self.screen.blit(self.slot_image, (x, y))
 

@@ -11,7 +11,7 @@ sys.argv.append('py2exe')
 
 DIST_DIR='dist/'
 
-VERSION = '42.17' # Number of hours/minutes into compo
+VERSION = '46.55' # Number of hours/minutes into compo
 AUTHOR_NAME = 'Mike Tsao (Sowbug)'
 AUTHOR_EMAIL = 'mike.tsao@gmail.com'
 AUTHOR_URL = 'http://www.sowbug.org/'

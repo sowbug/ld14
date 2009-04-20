@@ -32,3 +32,4 @@
 +41:47 Turns out x tiles are fun. Adding them starting at level 2.
 +42:15 Finished uploading final.
 +42:17 OK, now really finished.
++46:55 Couldn't leave well enough alone. Added gradients to tiles so they look a little less flat.
